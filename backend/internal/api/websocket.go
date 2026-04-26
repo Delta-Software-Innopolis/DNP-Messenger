@@ -28,7 +28,7 @@ type websocketRequest struct {
 	After  int64  `json:"after"`
 	Text   string `json:"text"`
 	Alias  string `json:"alias"`
-	RoomID int    `json:"room_id"`
+	RoomID string `json:"room_id"`
 }
 
 type websocketMessage struct {
@@ -37,7 +37,7 @@ type websocketMessage struct {
 	Text      string    `json:"text"`
 	Sender    string    `json:"sender"`
 	Timestamp time.Time `json:"timestamp"`
-	RoomID    int       `json:"room_id"`
+	RoomID    string    `json:"room_id"`
 }
 
 type websocketResponse struct {
@@ -49,13 +49,13 @@ type websocketClient struct {
 	conn   *websocket.Conn
 	send   chan websocketResponse
 	alias  string
-	rooms  map[int]struct{}
+	rooms  map[string]struct{}
 	closed bool
 }
 
 type websocketHub struct {
 	mu             sync.RWMutex
-	clientsByRoom  map[int]map[*websocketClient]struct{}
+	clientsByRoom  map[string]map[*websocketClient]struct{}
 	clientsByAlias map[string]map[*websocketClient]struct{}
 }
 
@@ -71,7 +71,7 @@ var (
 
 func newWebsocketHub() *websocketHub {
 	return &websocketHub{
-		clientsByRoom:  make(map[int]map[*websocketClient]struct{}),
+		clientsByRoom:  make(map[string]map[*websocketClient]struct{}),
 		clientsByAlias: make(map[string]map[*websocketClient]struct{}),
 	}
 }
@@ -113,7 +113,7 @@ func (h *websocketHub) unregister(client *websocketClient) {
 	close(client.send)
 }
 
-func (h *websocketHub) broadcast(roomID int, messages []models.Message) {
+func (h *websocketHub) broadcast(roomID string, messages []models.Message) {
 	if len(messages) == 0 {
 		return
 	}
@@ -132,7 +132,7 @@ func (h *websocketHub) broadcast(roomID int, messages []models.Message) {
 	}
 }
 
-func (h *websocketHub) subscribeAliasToRoom(alias string, roomID int) {
+func (h *websocketHub) subscribeAliasToRoom(alias string, roomID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -141,7 +141,7 @@ func (h *websocketHub) subscribeAliasToRoom(alias string, roomID int) {
 	}
 }
 
-func (h *websocketHub) unsubscribeAliasFromRoom(alias string, roomID int) {
+func (h *websocketHub) unsubscribeAliasFromRoom(alias string, roomID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -150,7 +150,7 @@ func (h *websocketHub) unsubscribeAliasFromRoom(alias string, roomID int) {
 	}
 }
 
-func (h *websocketHub) clientInRoom(client *websocketClient, roomID int) bool {
+func (h *websocketHub) clientInRoom(client *websocketClient, roomID string) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -158,9 +158,9 @@ func (h *websocketHub) clientInRoom(client *websocketClient, roomID int) bool {
 	return ok
 }
 
-func (h *websocketHub) subscribeClientLocked(client *websocketClient, roomID int) {
+func (h *websocketHub) subscribeClientLocked(client *websocketClient, roomID string) {
 	if client.rooms == nil {
-		client.rooms = make(map[int]struct{})
+		client.rooms = make(map[string]struct{})
 	}
 	if _, ok := client.rooms[roomID]; ok {
 		return
@@ -174,7 +174,7 @@ func (h *websocketHub) subscribeClientLocked(client *websocketClient, roomID int
 	h.clientsByRoom[roomID][client] = struct{}{}
 }
 
-func (h *websocketHub) unsubscribeClientLocked(client *websocketClient, roomID int) {
+func (h *websocketHub) unsubscribeClientLocked(client *websocketClient, roomID string) {
 	delete(client.rooms, roomID)
 
 	if roomClients := h.clientsByRoom[roomID]; roomClients != nil {
@@ -204,7 +204,7 @@ func (client *websocketClient) readPump() {
 			req.Alias = client.alias
 		}
 
-		if req.RoomID == 0 || req.Alias != client.alias {
+		if req.RoomID == "" || req.Alias != client.alias {
 			client.writeError("room_id is required and alias must match websocket connection")
 			continue
 		}
@@ -311,7 +311,7 @@ func toWebsocketMessages(messages []models.Message) []websocketMessage {
 	return responseMessages
 }
 
-func broadcastRoomEvent(roomID int, alias string, messageType int) error {
+func broadcastRoomEvent(roomID string, alias string, messageType int) error {
 	msg := models.Message{
 		Type:      messageType,
 		Sender:    alias,
@@ -356,7 +356,7 @@ func Websocket(c *gin.Context) {
 		conn:  conn,
 		send:  make(chan websocketResponse, 256),
 		alias: req.Alias,
-		rooms: make(map[int]struct{}),
+		rooms: make(map[string]struct{}),
 	}
 
 	wsHub.register(client, rooms)
