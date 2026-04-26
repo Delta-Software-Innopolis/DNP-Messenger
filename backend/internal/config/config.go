@@ -13,6 +13,8 @@ type Config struct {
 		Password string
 		Name     string
 	}
+	Servers []string
+	Self string
 }
 
 var AppConfig Config
@@ -24,6 +26,16 @@ func Load() {
 	AppConfig.Database.Name = os.Getenv("DB_NAME")
 
 	dbport, err := strconv.Atoi(os.Getenv("DB_PORT"))
+	AppConfig.Servers = []string{
+		"http://localhost:8080",
+		"http://localhost:8081",
+		"http://localhost:8082",
+	}
+
+	AppConfig.Self = os.Getenv("SELF_ADDR")
+	if AppConfig.Self == "" {
+		panic("SELF_ADDR not set")
+	}
 
 	if err != nil {
 		panic("Port is invalid")

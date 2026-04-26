@@ -12,7 +12,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-    
+      SELF_ADDR: http://localhost:8080
       # Postgres
       DB_HOST: postgres1 
       DB_PORT: 5432
@@ -33,7 +33,7 @@ services:
     volumes:
       - postgres_data1:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "1488:5432"
     networks:
       - chatnet
     healthcheck:
@@ -53,7 +53,7 @@ services:
     ports:
       - "8081:8080"
     environment:
-    
+      SELF_ADDR: http://localhost:8081
       # Postgres
       DB_HOST: postgres2 
       DB_PORT: 5432
@@ -94,7 +94,7 @@ services:
     ports:
       - "8082:8080"
     environment:
-    
+      SELF_ADDR: http://localhost:8082
       # Postgres
       DB_HOST: postgres3
       DB_PORT: 5432
