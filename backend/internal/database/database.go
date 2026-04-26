@@ -1,0 +1,481 @@
+package database
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"dnp_messenger/internal/config"
+	"dnp_messenger/internal/models"
+	"dnp_messenger/pkg/utils"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var DB *pgxpool.Pool
+
+func Setup() error {
+	connString := fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s",
+		config.AppConfig.Database.User,
+		config.AppConfig.Database.Password,
+		config.AppConfig.Database.Host,
+		config.AppConfig.Database.Port,
+		config.AppConfig.Database.Name,
+	)
+
+	ctx := context.Background()
+	var pool *pgxpool.Pool
+	var err error
+
+	for attempt := 1; attempt <= 10; attempt++ {
+		pool, err = pgxpool.New(ctx, connString)
+		if err == nil {
+			if err = pool.Ping(ctx); err == nil {
+				break
+			}
+			pool.Close()
+		}
+
+		if attempt == 10 {
+			return fmt.Errorf("Unable to connect to database after %d attempts: %w", attempt, err)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+
+	DB = pool
+
+	if err := createTables(ctx); err != nil {
+		return fmt.Errorf("Unable to create tables: %w", err)
+	}
+
+	return nil
+}
+
+func createTables(ctx context.Context) error {
+
+	if _, err := DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS rooms (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(100),
+			invite_code VARCHAR(10)
+		)
+	`); err != nil {
+		return err
+	}
+
+	if _, err := DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS members (
+			room_id INT,
+			alias VARCHAR(20),
+			PRIMARY KEY(room_id, alias)
+		)
+	`); err != nil {
+		return err
+	}
+
+	if _, err := DB.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS message (
+			id SERIAL PRIMARY KEY,
+			type INT,
+			text TEXT,
+			sender VARCHAR(20),
+			timestamp TIMESTAMP,
+			room_id INT
+		)
+	`); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func SaveMessage(msg *models.Message) error {
+	ctx := context.Background()
+
+	err := DB.QueryRow(ctx, `
+		INSERT INTO message (type, text, sender, timestamp, room_id)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`, msg.Type, msg.Text, msg.Sender, msg.Timestamp, msg.RoomId).Scan(&msg.Id)
+
+	if err != nil {
+		return fmt.Errorf("unable to save message: %w", err)
+	}
+
+	return nil
+}
+
+func GetMessagesBefore(room int, count int, before int) ([]models.Message, error) {
+	ctx := context.Background()
+
+	rows, err := DB.Query(ctx, `
+		SELECT id, type, text, sender, timestamp, room_id
+		FROM message
+		WHERE room_id = $1 AND id <= $2
+		ORDER BY id DESC
+		LIMIT $3
+	`, room, before, count)
+
+	if err != nil {
+		return nil, fmt.Errorf("Unable to query messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []models.Message
+	for rows.Next() {
+		var msg models.Message
+		if err := rows.Scan(&msg.Id, &msg.Type, &msg.Text, &msg.Sender, &msg.Timestamp, &msg.RoomId); err != nil {
+			return nil, fmt.Errorf("Unable to scan message: %w", err)
+		}
+		messages = append(messages, msg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("Error iterating messages: %w", err)
+	}
+
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+func GetMessagesAfter(room int, after int) ([]models.Message, error) {
+	ctx := context.Background()
+
+	rows, err := DB.Query(ctx, `
+		SELECT id, type, text, sender, timestamp, room_id
+		FROM message
+		WHERE room_id = $1 AND id > $2
+		ORDER BY id ASC
+	`, room, after)
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to query messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []models.Message
+	for rows.Next() {
+		var msg models.Message
+		if err := rows.Scan(&msg.Id, &msg.Type, &msg.Text, &msg.Sender, &msg.Timestamp, &msg.RoomId); err != nil {
+			return nil, fmt.Errorf("Unable to scan message: %w", err)
+		}
+		messages = append(messages, msg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("Error iterating messages: %w", err)
+	}
+
+	return messages, nil
+}
+
+func GetLastMessage(room int) (*models.Message, error) {
+	ctx := context.Background()
+
+	var msg models.Message
+	err := DB.QueryRow(ctx, `
+		SELECT id, type, text, sender, timestamp, room_id
+		FROM message
+		WHERE room_id = $1
+		ORDER BY id DESC
+		LIMIT 1
+	`, room).Scan(&msg.Id, &msg.Type, &msg.Text, &msg.Sender, &msg.Timestamp, &msg.RoomId)
+
+	if err != nil {
+		return nil, fmt.Errorf("Unable to get last message: %w", err)
+	}
+
+	return &msg, nil
+}
+
+func CreateRoom(name string) (*models.Room, error) {
+	ctx := context.Background()
+
+	if DB == nil {
+		return nil, fmt.Errorf("Database connection not initialized")
+	}
+
+	now := time.Now()
+
+	var roomID int
+	err := DB.QueryRow(ctx, `
+		INSERT INTO rooms (name, invite_code)
+		VALUES ($1, '')
+		RETURNING id
+	`, name).Scan(&roomID)
+
+	if err != nil {
+		return nil, fmt.Errorf("Unable to create room: %w", err)
+	}
+
+	inviteCode := utils.GenerateInviteCode(name, roomID, now)
+
+	_, err = DB.Exec(ctx, `
+		UPDATE rooms
+		SET invite_code = $1
+		WHERE id = $2
+	`, inviteCode, roomID)
+
+	if err != nil {
+		return nil, fmt.Errorf("Unable to update invite code: %w", err)
+	}
+
+	return &models.Room{
+		Id:        roomID,
+		Name:      name,
+		LastMsg:   "",
+		LastMsgID: 0,
+		Members:   []string{},
+		Invite:    inviteCode,
+	}, nil
+}
+
+func AddMember(roomID int, alias string) error {
+	ctx := context.Background()
+
+	_, err := DB.Exec(ctx, `
+		INSERT INTO members (room_id, alias)
+		VALUES ($1, $2)
+	`, roomID, alias)
+
+	if err != nil {
+		return fmt.Errorf("Unable to add member: %w", err)
+	}
+
+	return nil
+}
+
+func GetRoom(roomID int) (*models.Room, error) {
+	ctx := context.Background()
+
+	var room models.Room
+
+	err := DB.QueryRow(ctx, `
+		SELECT id, name, invite_code
+		FROM rooms
+		WHERE id = $1
+	`, roomID).Scan(&room.Id, &room.Name, &room.Invite)
+
+	if err != nil {
+		return nil, fmt.Errorf("Unable to get room: %w", err)
+	}
+
+	lastMsg, err := GetLastMessage(roomID)
+	if err == nil && lastMsg != nil {
+		room.LastMsg = lastMsg.Text
+		room.LastMsgID = lastMsg.Id
+	}
+
+	rows, err := DB.Query(ctx, `
+		SELECT alias
+		FROM members
+		WHERE room_id = $1
+	`, roomID)
+
+	if err != nil {
+		return nil, fmt.Errorf("Unable to get members: %w", err)
+	}
+	defer rows.Close()
+
+	room.Members = []string{}
+
+	for rows.Next() {
+		var alias string
+		if err := rows.Scan(&alias); err != nil {
+			return nil, fmt.Errorf("Unable to scan member: %w", err)
+		}
+		room.Members = append(room.Members, alias)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("Error iterating members: %w", err)
+	}
+
+	return &room, nil
+}
+
+func getRoomMembers(ctx context.Context, roomID int) ([]string, error) {
+	rows, err := DB.Query(ctx, `
+		SELECT alias
+		FROM members
+		WHERE room_id = $1
+	`, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to get members: %w", err)
+	}
+	defer rows.Close()
+
+	members := make([]string, 0)
+	for rows.Next() {
+		var alias string
+		if err := rows.Scan(&alias); err != nil {
+			return nil, fmt.Errorf("Unable to scan member: %w", err)
+		}
+		members = append(members, alias)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("Error iterating members: %w", err)
+	}
+
+	return members, nil
+}
+
+func GetRoomsOf(alias string) ([]models.Room, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("Database connection not initialized")
+	}
+
+	ctx := context.Background()
+
+	rows, err := DB.Query(ctx, `
+		SELECT r.id, r.name, r.invite_code
+		FROM rooms r
+		JOIN members m ON m.room_id = r.id
+		WHERE m.alias = $1
+	`, alias)
+	if err != nil {
+		return nil, fmt.Errorf("unable to query rooms: %w", err)
+	}
+	defer rows.Close()
+
+	var rooms []models.Room
+	for rows.Next() {
+		var room models.Room
+		if err := rows.Scan(&room.Id, &room.Name, &room.Invite); err != nil {
+			return nil, fmt.Errorf("unable to scan room: %w", err)
+		}
+
+		lastMsg, err := GetLastMessage(room.Id)
+		if err == nil && lastMsg != nil {
+			room.LastMsg = lastMsg.Text
+			room.LastMsgID = lastMsg.Id
+		}
+
+		room.Members, err = getRoomMembers(ctx, room.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		rooms = append(rooms, room)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rooms: %w", err)
+	}
+
+	return rooms, nil
+}
+
+func GetRoomByInvite(inviteCode string) (*models.Room, error) {
+	ctx := context.Background()
+
+	var room models.Room
+	err := DB.QueryRow(ctx, `
+		SELECT id, name, invite_code
+		FROM rooms
+		WHERE invite_code = $1
+	`, inviteCode).Scan(&room.Id, &room.Name, &room.Invite)
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to get room: %w", err)
+	}
+
+	lastMsg, err := GetLastMessage(room.Id)
+	if err == nil && lastMsg != nil {
+		room.LastMsg = lastMsg.Text
+		room.LastMsgID = lastMsg.Id
+	}
+
+	room.Members, err = getRoomMembers(ctx, room.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &room, nil
+}
+
+func IsMemberInRoom(roomID int, alias string) (bool, error) {
+	ctx := context.Background()
+
+	var exists bool
+	err := DB.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM members
+			WHERE room_id = $1 AND alias = $2
+		)
+	`, roomID, alias).Scan(&exists)
+
+	if err != nil {
+		return false, fmt.Errorf("unable to check membership: %w", err)
+	}
+
+	return exists, nil
+}
+
+func RemoveMember(roomID int, alias string) error {
+	ctx := context.Background()
+
+	_, err := DB.Exec(ctx, `
+		DELETE FROM members
+		WHERE room_id = $1 AND alias = $2
+	`, roomID, alias)
+
+	if err != nil {
+		return fmt.Errorf("Unable to remove member: %w", err)
+	}
+
+	return nil
+}
+
+func DeleteRoom(roomID int) error {
+	ctx := context.Background()
+
+	_, err := DB.Exec(ctx, `
+		DELETE FROM message
+		WHERE room_id = $1
+	`, roomID)
+	if err != nil {
+		return fmt.Errorf("Unable to delete messages: %w", err)
+	}
+
+	_, err = DB.Exec(ctx, `
+		DELETE FROM members
+		WHERE room_id = $1
+	`, roomID)
+	if err != nil {
+		return fmt.Errorf("Unable to delete members: %w", err)
+	}
+
+	_, err = DB.Exec(ctx, `
+		DELETE FROM rooms
+		WHERE id = $1
+	`, roomID)
+	if err != nil {
+		return fmt.Errorf("Unable to delete room: %w", err)
+	}
+
+	return nil
+}
+
+func GetMemberCount(roomID int) (int, error) {
+	ctx := context.Background()
+
+	var count int
+	err := DB.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM members
+		WHERE room_id = $1
+	`, roomID).Scan(&count)
+
+	if err != nil {
+		return 0, fmt.Errorf("Unable to get member count: %w", err)
+	}
+
+	return count, nil
+}

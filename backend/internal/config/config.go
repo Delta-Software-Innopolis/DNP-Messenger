@@ -5,14 +5,13 @@ import (
 	"strconv"
 )
 
-
 type Config struct {
 	Database struct {
-		Host string
-		Port int
-		User string
+		Host     string
+		Port     int
+		User     string
 		Password string
-		Name string
+		Name     string
 	}
 }
 
@@ -21,7 +20,7 @@ var AppConfig Config
 func Load() {
 	AppConfig.Database.Host = os.Getenv("DB_HOST")
 	AppConfig.Database.User = os.Getenv("DB_USER")
-	AppConfig.Database.Password = os.Getenv("DB_PWD")
+	AppConfig.Database.Password = os.Getenv("DB_PASSWORD")
 	AppConfig.Database.Name = os.Getenv("DB_NAME")
 
 	dbport, err := strconv.Atoi(os.Getenv("DB_PORT"))
@@ -31,5 +30,5 @@ func Load() {
 	}
 
 	AppConfig.Database.Port = dbport
-	
+
 }
