@@ -12,7 +12,7 @@ import (
 
 type LeaveRoomRequest struct {
 	Alias  string `json:"alias" binding:"required"`
-	RoomID int    `json:"room_id" binding:"required"`
+	RoomID string    `json:"room_id" binding:"required"`
 }
 
 func LeaveRoom(c *gin.Context) {
