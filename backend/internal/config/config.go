@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"log"
 )
 
 type Config struct {
@@ -27,9 +28,9 @@ func Load() {
 
 	dbport, err := strconv.Atoi(os.Getenv("DB_PORT"))
 	AppConfig.Servers = []string{
-		"http://localhost:8080",
-		"http://localhost:8081",
-		"http://localhost:8082",
+		"http://backend1:8080",
+		"http://backend2:8080",
+		"http://backend3:8080",
 	}
 
 	AppConfig.Self = os.Getenv("SELF_ADDR")
@@ -40,6 +41,8 @@ func Load() {
 	if err != nil {
 		panic("Port is invalid")
 	}
+
+	log.Printf("my self_addr = %s", AppConfig.Self)
 
 	AppConfig.Database.Port = dbport
 

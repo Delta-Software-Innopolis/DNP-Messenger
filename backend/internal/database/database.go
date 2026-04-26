@@ -206,8 +206,6 @@ func CreateRoomWithID(id, name string) (*models.Room, error) {
 		return nil, fmt.Errorf("Database connection not initialized")
 	}
 
-	now := time.Now()
-
 	_, err := DB.Exec(ctx, `
 		INSERT INTO rooms (id, name, invite_code)
 		VALUES ($1, $2, '')
@@ -217,7 +215,7 @@ func CreateRoomWithID(id, name string) (*models.Room, error) {
 		return nil, fmt.Errorf("Unable to create room with ID: %w", err)
 	}
 
-	inviteCode := utils.GenerateInviteCode(name, id, now)
+	inviteCode := utils.GenerateInviteCode(name, id)
 
 	_, err = DB.Exec(ctx, `
 		UPDATE rooms

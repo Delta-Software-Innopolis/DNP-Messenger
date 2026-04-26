@@ -12,7 +12,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SELF_ADDR: http://localhost:8080
+      SELF_ADDR: http://backend1:8080
       # Postgres
       DB_HOST: postgres1 
       DB_PORT: 5432
@@ -53,7 +53,7 @@ services:
     ports:
       - "8081:8080"
     environment:
-      SELF_ADDR: http://localhost:8081
+      SELF_ADDR: http://backend2:8080
       # Postgres
       DB_HOST: postgres2 
       DB_PORT: 5432
@@ -94,7 +94,7 @@ services:
     ports:
       - "8082:8080"
     environment:
-      SELF_ADDR: http://localhost:8082
+      SELF_ADDR: http://backend3:8080
       # Postgres
       DB_HOST: postgres3
       DB_PORT: 5432

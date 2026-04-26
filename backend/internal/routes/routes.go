@@ -21,7 +21,7 @@ func Setup() *gin.Engine {
 		room.POST("/create", api.CreateRoom)
 		room.POST("/join", api.JoinRoom)
 		room.POST("/leave", api.LeaveRoom)
-
+		room.POST("/propagate", api.PropagateRoom)
 	}
 
 	return router
