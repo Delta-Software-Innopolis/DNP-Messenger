@@ -9,6 +9,7 @@ import (
 	"dnp_messenger/internal/models"
 	"dnp_messenger/pkg/utils"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -57,7 +58,7 @@ func createTables(ctx context.Context) error {
 
 	if _, err := DB.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS rooms (
-			id SERIAL PRIMARY KEY,
+			id VARCHAR(36) PRIMARY KEY,
 			name VARCHAR(100),
 			invite_code VARCHAR(10)
 		)
@@ -67,7 +68,7 @@ func createTables(ctx context.Context) error {
 
 	if _, err := DB.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS members (
-			room_id INT,
+			room_id VARCHAR(36),
 			alias VARCHAR(20),
 			PRIMARY KEY(room_id, alias)
 		)
@@ -82,7 +83,7 @@ func createTables(ctx context.Context) error {
 			text TEXT,
 			sender VARCHAR(20),
 			timestamp TIMESTAMP,
-			room_id INT
+			room_id VARCHAR(36)
 		)
 	`); err != nil {
 		return err
@@ -107,7 +108,7 @@ func SaveMessage(msg *models.Message) error {
 	return nil
 }
 
-func GetMessagesBefore(room int, count int, before int) ([]models.Message, error) {
+func GetMessagesBefore(room string, count int, before int) ([]models.Message, error) {
 	ctx := context.Background()
 
 	rows, err := DB.Query(ctx, `
@@ -143,7 +144,7 @@ func GetMessagesBefore(room int, count int, before int) ([]models.Message, error
 	return messages, nil
 }
 
-func GetMessagesAfter(room int, after int) ([]models.Message, error) {
+func GetMessagesAfter(room string, after int) ([]models.Message, error) {
 	ctx := context.Background()
 
 	rows, err := DB.Query(ctx, `
@@ -174,7 +175,7 @@ func GetMessagesAfter(room int, after int) ([]models.Message, error) {
 	return messages, nil
 }
 
-func GetLastMessage(room int) (*models.Message, error) {
+func GetLastMessage(room string) (*models.Message, error) {
 	ctx := context.Background()
 
 	var msg models.Message
@@ -194,6 +195,11 @@ func GetLastMessage(room int) (*models.Message, error) {
 }
 
 func CreateRoom(name string) (*models.Room, error) {
+	roomID := uuid.New().String()
+	return CreateRoomWithID(roomID, name)
+}
+
+func CreateRoomWithID(id, name string) (*models.Room, error) {
 	ctx := context.Background()
 
 	if DB == nil {
@@ -202,31 +208,29 @@ func CreateRoom(name string) (*models.Room, error) {
 
 	now := time.Now()
 
-	var roomID int
-	err := DB.QueryRow(ctx, `
-		INSERT INTO rooms (name, invite_code)
-		VALUES ($1, '')
-		RETURNING id
-	`, name).Scan(&roomID)
+	_, err := DB.Exec(ctx, `
+		INSERT INTO rooms (id, name, invite_code)
+		VALUES ($1, $2, '')
+	`, id, name)
 
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create room: %w", err)
+		return nil, fmt.Errorf("Unable to create room with ID: %w", err)
 	}
 
-	inviteCode := utils.GenerateInviteCode(name, roomID, now)
+	inviteCode := utils.GenerateInviteCode(name, id, now)
 
 	_, err = DB.Exec(ctx, `
 		UPDATE rooms
 		SET invite_code = $1
 		WHERE id = $2
-	`, inviteCode, roomID)
+	`, inviteCode, id)
 
 	if err != nil {
 		return nil, fmt.Errorf("Unable to update invite code: %w", err)
 	}
 
 	return &models.Room{
-		Id:        roomID,
+		Id:        id,
 		Name:      name,
 		LastMsg:   "",
 		LastMsgID: 0,
@@ -235,7 +239,7 @@ func CreateRoom(name string) (*models.Room, error) {
 	}, nil
 }
 
-func AddMember(roomID int, alias string) error {
+func AddMember(roomID string, alias string) error {
 	ctx := context.Background()
 
 	_, err := DB.Exec(ctx, `
@@ -250,7 +254,7 @@ func AddMember(roomID int, alias string) error {
 	return nil
 }
 
-func GetRoom(roomID int) (*models.Room, error) {
+func GetRoom(roomID string) (*models.Room, error) {
 	ctx := context.Background()
 
 	var room models.Room
@@ -299,7 +303,7 @@ func GetRoom(roomID int) (*models.Room, error) {
 	return &room, nil
 }
 
-func getRoomMembers(ctx context.Context, roomID int) ([]string, error) {
+func getRoomMembers(ctx context.Context, roomID string) ([]string, error) {
 	rows, err := DB.Query(ctx, `
 		SELECT alias
 		FROM members
@@ -400,7 +404,7 @@ func GetRoomByInvite(inviteCode string) (*models.Room, error) {
 	return &room, nil
 }
 
-func IsMemberInRoom(roomID int, alias string) (bool, error) {
+func IsMemberInRoom(roomID string, alias string) (bool, error) {
 	ctx := context.Background()
 
 	var exists bool
@@ -418,7 +422,7 @@ func IsMemberInRoom(roomID int, alias string) (bool, error) {
 	return exists, nil
 }
 
-func RemoveMember(roomID int, alias string) error {
+func RemoveMember(roomID string, alias string) error {
 	ctx := context.Background()
 
 	_, err := DB.Exec(ctx, `
@@ -433,7 +437,7 @@ func RemoveMember(roomID int, alias string) error {
 	return nil
 }
 
-func DeleteRoom(roomID int) error {
+func DeleteRoom(roomID string) error {
 	ctx := context.Background()
 
 	_, err := DB.Exec(ctx, `
@@ -463,7 +467,7 @@ func DeleteRoom(roomID int) error {
 	return nil
 }
 
-func GetMemberCount(roomID int) (int, error) {
+func GetMemberCount(roomID string) (int, error) {
 	ctx := context.Background()
 
 	var count int

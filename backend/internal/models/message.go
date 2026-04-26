@@ -14,5 +14,5 @@ type Message struct {
 	Text string
 	Sender string
 	Timestamp time.Time
-	RoomId int
+	RoomId string
 }
