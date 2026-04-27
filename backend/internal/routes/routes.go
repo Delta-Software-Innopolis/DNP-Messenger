@@ -11,7 +11,7 @@ func Setup() *gin.Engine {
 	router.SetTrustedProxies([]string{"127.0.0.1"})
 
 	router.GET("/ping/", api.Pong)
-
+	router.GET("/sync", api.Sync)
 	router.GET("/rooms", api.GetRooms)
 	router.GET("/ws", api.Websocket)
 

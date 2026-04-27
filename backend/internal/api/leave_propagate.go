@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"dnp_messenger/internal/models"
 	"dnp_messenger/internal/database"
 
 	"github.com/gin-gonic/gin"
@@ -56,6 +57,12 @@ func PropagateLeave(c *gin.Context) {
 			return
 		}
 		log.Printf("Room %s was deleted because it became empty", req.RoomID)
+	}
+
+	if err := broadcastRoomEvent(req.RoomID, req.Alias, models.T_USER_LEAVE); err != nil {
+		log.Printf("Error broadcasting room leave event: %v", err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
 	}
 
 	log.Printf("Synced user %s leaving room %s to this server", req.Alias, req.RoomID)

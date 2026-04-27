@@ -12,7 +12,7 @@ import (
 )
 
 type PropagateMessageRequest struct {
-	Id        string    `json:"type"`
+	Id        string    `json:"id"`
 	Type      int       `json:"type"`
 	Text      string    `json:"text"`
 	Sender    string    `json:"sender"`
@@ -28,22 +28,25 @@ func PropagateMessage(c *gin.Context) {
 		return
 	}
 
-	msg := models.Message{
-		Id:        req.Id,
-		Type:      req.Type,
-		Text:      req.Text,
-		Sender:    req.Sender,
-		Timestamp: req.Timestamp,
-		RoomId:    req.RoomId,
+	msg_exists, err := database.GetMessage(req.Id)
+	if msg_exists == nil || err != nil {
+		msg := models.Message{
+			Id:        req.Id,
+			Type:      req.Type,
+			Text:      req.Text,
+			Sender:    req.Sender,
+			Timestamp: req.Timestamp,
+			RoomId:    req.RoomId,
+		}
+	    
+		err := database.SaveMessage(&msg)
+		if err != nil {
+			log.Printf("Error saving propagated message: %v", err)
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		wsHub.broadcast(req.RoomId, []models.Message{msg})
+		log.Printf("Propagation of message (id=%s, text=%s) to room %s recieved successfully", msg.Id, msg.Text, msg.RoomId)
 	}
-    
-	err := database.SaveMessage(&msg)
-	if err != nil {
-		log.Printf("Error saving propagated message: %v", err)
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-	wsHub.broadcast(req.RoomId, []models.Message{msg})
-	log.Printf("Propagation of message (id=%d, text=%s) to room %s recieved successfully", msg.Id, msg.Text, msg.RoomId)
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
