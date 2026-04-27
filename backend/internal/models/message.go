@@ -9,10 +9,10 @@ const (
 )
 
 type Message struct {
-	Id int
-	Type int
-	Text string
-	Sender string
-	Timestamp time.Time
-	RoomId string
+	Id        int       `json:"id"`
+	Type      int       `json:"type"`
+	Text      string    `json:"text"`
+	Sender    string    `json:"sender"`
+	Timestamp time.Time `json:"timestamp"`
+	RoomId    string    `json:"room_id"`
 }

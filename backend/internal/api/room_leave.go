@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"log"
 	"net/http"
 
+	"dnp_messenger/internal/config"
 	"dnp_messenger/internal/database"
 	"dnp_messenger/internal/models"
 
@@ -47,6 +50,42 @@ func LeaveRoom(c *gin.Context) {
 		return
 	}
 	wsHub.unsubscribeAliasFromRoom(req.Alias, req.RoomID)
+
+	propagateReq := PropagateLeaveRequest{
+		RoomID: req.RoomID,
+		Alias:  req.Alias,
+	}
+
+	jsonData, err := json.Marshal(propagateReq)
+	if err != nil {
+		log.Printf("Error marshaling leave propagate request: %v", err)
+		return
+	}
+
+	for _, peer := range config.AppConfig.Servers {
+		if peer == config.AppConfig.Self {
+			continue
+		}
+
+		go func(peer string) {
+			resp, err := http.Post(
+				peer + "/propagate/leave",
+				"application/json",
+				bytes.NewBuffer(jsonData),
+			)
+			if err != nil {
+				log.Printf("Failed to propagate leave to peer %s: %v", peer, err)
+				return
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				log.Printf("Peer %s returned non-OK status %d for leave propagate", peer, resp.StatusCode)
+			}
+
+			log.Printf("Successfully propagated room leave of %s from room %s to peer %s", req.Alias, req.RoomID, peer)
+		}(peer)
+	}
 
 	memberCount, err := database.GetMemberCount(req.RoomID)
 	if err != nil {

@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"log"
 	"net/http"
 
+	"dnp_messenger/internal/config"
 	"dnp_messenger/internal/database"
 	"dnp_messenger/internal/models"
 
@@ -56,6 +59,42 @@ func JoinRoom(c *gin.Context) {
 		log.Printf("Error broadcasting room join event: %v", err)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
+	}
+
+	propagateReq := PropagateJoinRequest{
+		RoomID: room.Id,
+		Alias:  req.Alias,
+	}
+
+	jsonData, err := json.Marshal(propagateReq)
+	if err != nil {
+		log.Printf("Error marshaling join propagate request: %v", err)
+		return
+	}
+
+	for _, peer := range config.AppConfig.Servers {
+		if peer == config.AppConfig.Self {
+			continue
+		}
+
+		go func(peer string) {
+			resp, err := http.Post(
+				peer + "/propagate/join",
+				"application/json",
+				bytes.NewBuffer(jsonData),
+			)
+			if err != nil {
+				log.Printf("Failed to propagate join to peer %s: %v", peer, err)
+				return
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				log.Printf("Peer %s returned non-OK status %d for join propagate", peer, resp.StatusCode)
+			}
+
+			log.Printf("Successfully propagated %s joining to room %s to peer %s", req.Alias, room.Id, peer)
+		}(peer)
 	}
 
 	c.JSON(http.StatusOK, room)

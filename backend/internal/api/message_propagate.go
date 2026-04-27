@@ -12,37 +12,38 @@ import (
 )
 
 type PropagateMessageRequest struct {
-    Type      int       `json:"type"`
-    Text      string    `json:"text"`
-    Sender    string    `json:"sender"`
-    Timestamp time.Time `json:"timestamp"`
-    RoomID    string    `json:"room_id"`
+	Type      int       `json:"type"`
+	Text      string    `json:"text"`
+	Sender    string    `json:"sender"`
+	Timestamp time.Time `json:"timestamp"`
+	RoomId    string    `json:"room_id"`
 }
 
 func PropagateMessage(c *gin.Context) {
-    var req PropagateMessageRequest
+	var req PropagateMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("Failed binding json when propagating message: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("ROOM ID IN PROPAGATION: %s", req.RoomId)
+
+	msg := models.Message{
+		Type:      req.Type,
+		Text:      req.Text,
+		Sender:    req.Sender,
+		Timestamp: req.Timestamp,
+		RoomId:    req.RoomId,
+	}
     
-    if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-    
-    msg := models.Message{
-        Type:      req.Type,
-        Text:      req.Text,
-        Sender:    req.Sender,
-        Timestamp: req.Timestamp,
-        RoomId:    req.RoomID,
-    }
-    
-    err := database.SaveMessage(&msg)
-    if err != nil {
-        log.Printf("Error saving propagated message: %v", err)
-        c.AbortWithStatus(http.StatusInternalServerError)
-        return
-    }
-    
-    wsHub.broadcast(req.RoomID, []models.Message{msg})
-    
-    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	err := database.SaveMessage(&msg)
+	if err != nil {
+		log.Printf("Error saving propagated message: %v", err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	wsHub.broadcast(req.RoomId, []models.Message{msg})
+	log.Printf("Successful propagation of message %s to room %s", req.Text, req.RoomId)
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

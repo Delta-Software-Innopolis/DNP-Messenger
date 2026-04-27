@@ -277,6 +277,8 @@ func (client *websocketClient) handleRequest(req websocketRequest) {
 			return
 		}
 
+		log.Printf("ROOM ID BEFORE PROPAGATE: %s", msg.RoomId)
+
 		msgJson, err := json.Marshal(msg)
 		if err != nil {
 			log.Printf("Error marshaling message propagate: %v", err)
@@ -290,7 +292,7 @@ func (client *websocketClient) handleRequest(req websocketRequest) {
 
 			go func(peer string) {
 				resp, err := http.Post(
-					peer + "/propagate",
+					peer + "/propagate/message",
 					"application/json",
 					bytes.NewBuffer(msgJson),
 				)
@@ -299,6 +301,8 @@ func (client *websocketClient) handleRequest(req websocketRequest) {
 					log.Printf("Failed to propagate message to peer %s: %v", peer, err)
 					return
 				}
+
+				log.Printf("Successfully propagated message %s to peer %s", msg.Text, peer)
 
 				defer resp.Body.Close()
 			}(peer)

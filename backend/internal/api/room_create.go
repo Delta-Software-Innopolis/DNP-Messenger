@@ -71,7 +71,7 @@ func CreateRoom(c *gin.Context) {
 
 		go func(peer string) {
 			resp, err := http.Post(
-				peer + "/room/propagate",
+				peer + "/propagate/room",
 				"application/json",
 				bytes.NewBuffer(propagateReqJson),
 			)

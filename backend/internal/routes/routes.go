@@ -14,7 +14,6 @@ func Setup() *gin.Engine {
 
 	router.GET("/rooms", api.GetRooms)
 	router.GET("/ws", api.Websocket)
-	router.GET("/propagate", api.PropagateMessage)
 
 	{
 		room := router.Group("/room")
@@ -22,7 +21,14 @@ func Setup() *gin.Engine {
 		room.POST("/create", api.CreateRoom)
 		room.POST("/join", api.JoinRoom)
 		room.POST("/leave", api.LeaveRoom)
-		room.POST("/propagate", api.PropagateRoom)
+	}
+
+	{
+		propagate := router.Group("/propagate")
+		propagate.POST("/message", api.PropagateMessage)
+		propagate.POST("/room", api.PropagateRoom)
+		propagate.POST("/join", api.PropagateJoin)
+		propagate.POST("/leave", api.PropagateLeave)
 	}
 
 	return router
