@@ -1,11 +1,14 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
+	"dnp_messenger/internal/config"
 	"dnp_messenger/internal/database"
 	"dnp_messenger/internal/models"
 
@@ -272,6 +275,33 @@ func (client *websocketClient) handleRequest(req websocketRequest) {
 			log.Printf("Error saving websocket message: %v", err)
 			client.writeError("unable to save message")
 			return
+		}
+
+		msgJson, err := json.Marshal(msg)
+		if err != nil {
+			log.Printf("Error marshaling message propagate: %v", err)
+			return
+		}
+
+		for _, peer := range config.AppConfig.Servers {
+			if peer == config.AppConfig.Self {
+				continue
+			}
+
+			go func(peer string) {
+				resp, err := http.Post(
+					peer + "/propagate",
+					"application/json",
+					bytes.NewBuffer(msgJson),
+				)
+
+				if err != nil {
+					log.Printf("Failed to propagate message to peer %s: %v", peer, err)
+					return
+				}
+
+				defer resp.Body.Close()
+			}(peer)
 		}
 
 		client.hub.broadcast(req.RoomID, []models.Message{msg})

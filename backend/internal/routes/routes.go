@@ -14,6 +14,7 @@ func Setup() *gin.Engine {
 
 	router.GET("/rooms", api.GetRooms)
 	router.GET("/ws", api.Websocket)
+	router.GET("/propagate", api.PropagateMessage)
 
 	{
 		room := router.Group("/room")
