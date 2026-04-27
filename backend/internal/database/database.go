@@ -58,7 +58,7 @@ func createTables(ctx context.Context) error {
 
 	if _, err := DB.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS rooms (
-			id VARCHAR(36) PRIMARY KEY,
+			id UUID PRIMARY KEY,
 			name VARCHAR(100),
 			invite_code VARCHAR(10)
 		)
@@ -68,7 +68,7 @@ func createTables(ctx context.Context) error {
 
 	if _, err := DB.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS members (
-			room_id VARCHAR(36),
+			room_id UUID,
 			alias VARCHAR(20),
 			PRIMARY KEY(room_id, alias)
 		)
@@ -78,12 +78,12 @@ func createTables(ctx context.Context) error {
 
 	if _, err := DB.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS message (
-			id SERIAL PRIMARY KEY,
+			id UUID PRIMARY KEY,
 			type INT,
 			text TEXT,
 			sender VARCHAR(20),
 			timestamp TIMESTAMP,
-			room_id VARCHAR(36)
+			room_id UUID
 		)
 	`); err != nil {
 		return err
@@ -95,11 +95,14 @@ func createTables(ctx context.Context) error {
 func SaveMessage(msg *models.Message) error {
 	ctx := context.Background()
 
-	err := DB.QueryRow(ctx, `
-		INSERT INTO message (type, text, sender, timestamp, room_id)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id
-	`, msg.Type, msg.Text, msg.Sender, msg.Timestamp, msg.RoomId).Scan(&msg.Id)
+	if msg.Id == "" {
+		msg.Id = uuid.NewString()
+	}
+
+	_, err := DB.Exec(ctx, `
+		INSERT INTO message (id, type, text, sender, timestamp, room_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, msg.Id, msg.Type, msg.Text, msg.Sender, msg.Timestamp, msg.RoomId)
 
 	if err != nil {
 		return fmt.Errorf("unable to save message: %w", err)
@@ -108,16 +111,53 @@ func SaveMessage(msg *models.Message) error {
 	return nil
 }
 
-func GetMessagesBefore(room string, count int, before int) ([]models.Message, error) {
+func GetMessage(id string) (*models.Message, error) {
 	ctx := context.Background()
+
+	var msg models.Message
+
+	err := DB.QueryRow(ctx, `
+		SELECT id, type, text, sender, timestamp, room_id
+		FROM message
+		WHERE id = $1
+	`, id).Scan(
+		&msg.Id,
+		&msg.Type,
+		&msg.Text,
+		&msg.Sender,
+		&msg.Timestamp,
+		&msg.RoomId,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to get message: %w", err)
+	}
+
+	return &msg, nil
+}
+
+func GetMessagesBefore(room string, count int, before string) ([]models.Message, error) {
+	ctx := context.Background()
+
+	msg, err := GetMessage(before)
+	if err != nil {
+		return nil, err
+	}
+	if msg == nil {
+		return nil, fmt.Errorf("message not found")
+	}
 
 	rows, err := DB.Query(ctx, `
 		SELECT id, type, text, sender, timestamp, room_id
 		FROM message
-		WHERE room_id = $1 AND id <= $2
-		ORDER BY id DESC
-		LIMIT $3
-	`, room, before, count)
+		WHERE room_id = $1
+		  AND (
+		    timestamp < $2 OR
+		    (timestamp = $2 AND id < $3)
+		  )
+		ORDER BY timestamp DESC, id DESC
+		LIMIT $4
+	`, room, msg.Timestamp, msg.Id, count)
 
 	if err != nil {
 		return nil, fmt.Errorf("Unable to query messages: %w", err)
@@ -126,11 +166,11 @@ func GetMessagesBefore(room string, count int, before int) ([]models.Message, er
 
 	var messages []models.Message
 	for rows.Next() {
-		var msg models.Message
-		if err := rows.Scan(&msg.Id, &msg.Type, &msg.Text, &msg.Sender, &msg.Timestamp, &msg.RoomId); err != nil {
+		var m models.Message
+		if err := rows.Scan(&m.Id, &m.Type, &m.Text, &m.Sender, &m.Timestamp, &m.RoomId); err != nil {
 			return nil, fmt.Errorf("Unable to scan message: %w", err)
 		}
-		messages = append(messages, msg)
+		messages = append(messages, m)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -144,15 +184,27 @@ func GetMessagesBefore(room string, count int, before int) ([]models.Message, er
 	return messages, nil
 }
 
-func GetMessagesAfter(room string, after int) ([]models.Message, error) {
+func GetMessagesAfter(room string, after string) ([]models.Message, error) {
 	ctx := context.Background()
+
+	msg, err := GetMessage(after)
+	if err != nil {
+		return nil, err
+	}
+	if msg == nil {
+		return nil, fmt.Errorf("message not found")
+	}
 
 	rows, err := DB.Query(ctx, `
 		SELECT id, type, text, sender, timestamp, room_id
 		FROM message
-		WHERE room_id = $1 AND id > $2
-		ORDER BY id ASC
-	`, room, after)
+		WHERE room_id = $1
+		  AND (
+		    timestamp > $2 OR
+		    (timestamp = $2 AND id > $3)
+		  )
+		ORDER BY timestamp ASC, id ASC
+	`, room, msg.Timestamp, msg.Id)
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to query messages: %w", err)
@@ -161,15 +213,15 @@ func GetMessagesAfter(room string, after int) ([]models.Message, error) {
 
 	var messages []models.Message
 	for rows.Next() {
-		var msg models.Message
-		if err := rows.Scan(&msg.Id, &msg.Type, &msg.Text, &msg.Sender, &msg.Timestamp, &msg.RoomId); err != nil {
-			return nil, fmt.Errorf("Unable to scan message: %w", err)
+		var m models.Message
+		if err := rows.Scan(&m.Id, &m.Type, &m.Text, &m.Sender, &m.Timestamp, &m.RoomId); err != nil {
+			return nil, fmt.Errorf("unable to scan message: %w", err)
 		}
-		messages = append(messages, msg)
+		messages = append(messages, m)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("Error iterating messages: %w", err)
+		return nil, fmt.Errorf("error iterating messages: %w", err)
 	}
 
 	return messages, nil
@@ -183,7 +235,7 @@ func GetLastMessage(room string) (*models.Message, error) {
 		SELECT id, type, text, sender, timestamp, room_id
 		FROM message
 		WHERE room_id = $1
-		ORDER BY id DESC
+		ORDER BY timestamp DESC, id DESC
 		LIMIT 1
 	`, room).Scan(&msg.Id, &msg.Type, &msg.Text, &msg.Sender, &msg.Timestamp, &msg.RoomId)
 
@@ -195,7 +247,7 @@ func GetLastMessage(room string) (*models.Message, error) {
 }
 
 func CreateRoom(name string) (*models.Room, error) {
-	roomID := uuid.New().String()
+	roomID := uuid.NewString()
 	return CreateRoomWithID(roomID, name)
 }
 
@@ -231,7 +283,7 @@ func CreateRoomWithID(id, name string) (*models.Room, error) {
 		Id:        id,
 		Name:      name,
 		LastMsg:   "",
-		LastMsgID: 0,
+		LastMsgID: "",
 		Members:   []string{},
 		Invite:    inviteCode,
 	}, nil

@@ -9,7 +9,7 @@ const (
 )
 
 type Message struct {
-	Id        int       `json:"id"`
+	Id        string    `json:"id"`
 	Type      int       `json:"type"`
 	Text      string    `json:"text"`
 	Sender    string    `json:"sender"`

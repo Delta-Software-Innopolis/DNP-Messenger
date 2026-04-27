@@ -12,6 +12,7 @@ import (
 )
 
 type PropagateMessageRequest struct {
+	Id        string    `json:"type"`
 	Type      int       `json:"type"`
 	Text      string    `json:"text"`
 	Sender    string    `json:"sender"`
@@ -28,6 +29,7 @@ func PropagateMessage(c *gin.Context) {
 	}
 
 	msg := models.Message{
+		Id:        req.Id,
 		Type:      req.Type,
 		Text:      req.Text,
 		Sender:    req.Sender,

@@ -27,15 +27,15 @@ const (
 type websocketRequest struct {
 	Type   int    `json:"type"`
 	Count  int64  `json:"count"`
-	Before int64  `json:"before"`
-	After  int64  `json:"after"`
+	Before string `json:"before"`
+	After  string `json:"after"`
 	Text   string `json:"text"`
 	Alias  string `json:"alias"`
 	RoomID string `json:"room_id"`
 }
 
 type websocketMessage struct {
-	ID        int       `json:"id"`
+	ID        string    `json:"id"`
 	Type      int       `json:"type"`
 	Text      string    `json:"text"`
 	Sender    string    `json:"sender"`
@@ -241,9 +241,8 @@ func (client *websocketClient) handleRequest(req websocketRequest) {
 		}
 
 		count := clampPostgresInt4(req.Count)
-		before := clampPostgresInt4(req.Before)
 
-		messages, err := database.GetMessagesBefore(req.RoomID, count, before)
+		messages, err := database.GetMessagesBefore(req.RoomID, count, req.Before)
 		if err != nil {
 			log.Printf("Error getting messages before %d in room %d: %v", req.Before, req.RoomID, err)
 			client.writeError("unable to get messages")
@@ -252,9 +251,7 @@ func (client *websocketClient) handleRequest(req websocketRequest) {
 
 		client.send <- websocketResponse{Messages: toWebsocketMessages(messages)}
 	case wsRequestAfter:
-		after := clampPostgresInt4(req.After)
-
-		messages, err := database.GetMessagesAfter(req.RoomID, after)
+		messages, err := database.GetMessagesAfter(req.RoomID, req.After)
 		if err != nil {
 			log.Printf("Error getting messages after %d in room %d: %v", req.After, req.RoomID, err)
 			client.writeError("unable to get messages")
@@ -277,7 +274,6 @@ func (client *websocketClient) handleRequest(req websocketRequest) {
 			return
 		}
 
-		log.Printf("ROOM ID BEFORE PROPAGATE: %s", msg.RoomId)
 
 		msgJson, err := json.Marshal(msg)
 		if err != nil {
@@ -291,6 +287,7 @@ func (client *websocketClient) handleRequest(req websocketRequest) {
 			}
 
 			go func(peer string) {
+				log.Printf("Propagating message (id=%s, text=%s) in room %s to peer %s", msg.RoomId, msg.Text, msg.RoomId, peer)
 				resp, err := http.Post(
 					peer + "/propagate/message",
 					"application/json",
