@@ -42,7 +42,7 @@ func Load() {
 		panic("Port is invalid")
 	}
 
-	log.Printf("my self_addr = %s", AppConfig.Self)
+	log.Printf("SELF = %s", AppConfig.Self)
 
 	AppConfig.Database.Port = dbport
 

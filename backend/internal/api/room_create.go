@@ -70,6 +70,8 @@ func CreateRoom(c *gin.Context) {
 		}
 
 		go func(peer string) {
+			log.Printf("Propagating room %s to peer %s", room.Id, peer)
+
 			resp, err := http.Post(
 				peer + "/propagate/room",
 				"application/json",
@@ -86,8 +88,6 @@ func CreateRoom(c *gin.Context) {
 				log.Printf("Peer %s return non-OK status %d for room %s", peer, resp.StatusCode, room.Id)
 				return
 			}
-
-			log.Printf("Successfully propagated room%s to peer %s", room.Id, peer)
 		}(peer)
 	}
 

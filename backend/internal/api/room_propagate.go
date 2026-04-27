@@ -16,7 +16,6 @@ type PropagateRoomRequest struct {
 }
 
 func PropagateRoom(c *gin.Context) {
-	log.Printf("hi")
 	var req PropagateRoomRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -50,7 +49,7 @@ func PropagateRoom(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Successfully synced room %s to database on this server", req.RoomID)
+	log.Printf("Propagation of room %s recieved successfully", req.RoomID)
 	c.JSON(http.StatusOK, room)
 }
 

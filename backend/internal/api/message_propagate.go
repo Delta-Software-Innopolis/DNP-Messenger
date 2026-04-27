@@ -27,8 +27,6 @@ func PropagateMessage(c *gin.Context) {
 		return
 	}
 
-	log.Printf("ROOM ID IN PROPAGATION: %s", req.RoomId)
-
 	msg := models.Message{
 		Type:      req.Type,
 		Text:      req.Text,
@@ -44,6 +42,6 @@ func PropagateMessage(c *gin.Context) {
 		return
 	}
 	wsHub.broadcast(req.RoomId, []models.Message{msg})
-	log.Printf("Successful propagation of message %s to room %s", req.Text, req.RoomId)
+	log.Printf("Propagation of message (id=%d, text=%s) to room %s recieved successfully", msg.Id, msg.Text, msg.RoomId)
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
