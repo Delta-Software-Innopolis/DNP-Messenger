@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="logo.png" alt="OLEG Messenger Logo" width="350">
+</p>
+
+
+
 # OLEG MESSENGER
 **The P2P Decentralized Chat Network**  
 Peer-to-peer messanger where multiple servers synchronise messages without central coordinator. Clients can switch between servers seamlessly, ensuring smooth and decentralised experience.
