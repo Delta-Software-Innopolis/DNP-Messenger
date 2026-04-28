@@ -1,11 +1,11 @@
 # OLEG MESSENGER
-**The P2P Decentralized Chat Network**
-Peer-to-peer messanger where multiple servers synchronise messages without central coordinator. Each server has its own database, and clients can switch between servers seamlessly.
+**The P2P Decentralized Chat Network**  
+Peer-to-peer messanger where multiple servers synchronise messages without central coordinator. Clients can switch between servers seamlessly, ensuring smooth and decentralised experience.
 
 This product was completed as part of a DNP (Distributed and Network Programming) project by students of Innopolis University.
   
   
-### Use case diagram
+## Use case diagram
 ```mermaid
 flowchart LR
     subgraph System["Messenger OLEG"]
@@ -24,7 +24,14 @@ flowchart LR
     User --- Leave
     User --- View
 ```
-### Architecture
+### Features
+- Decentralised network  
+- Message propogation  
+- Deduplication  
+- Eventual Consistency  
+- Partition Tolerance  
+
+## Architecture
 ```mermaid
 flowchart LR
     subgraph Network["Docker Network"]
@@ -51,3 +58,28 @@ flowchart LR
     User -.-> Host2
     User -.-> Host3
 ```
+The Backend consists of 3 independent servers (running as Docker containers) in a bridge network.  
+The P2P system is full mesh topology.   
+Servers communicate with each other using HTTP, whereas clients interact with servers using Websocket.  
+Each server ensures validity and actuality of its data in the DB by synchronising with other peers.  
+
+
+### How to start
+**Prerequirities**
+
+- Docker
+- Go
+
+
+**Launch the server:**  
+
+```
+git clone https://github.com/Delta-Software-Innopolis/DNP-Messenger
+cd DNP-Messenger
+docker-compose up --build
+```  
+
+**Launch the messenger:**
+- Install `OLEG.apk`
+- Launch the app
+- In settings, specify the link to your server
