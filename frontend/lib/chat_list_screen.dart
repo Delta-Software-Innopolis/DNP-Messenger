@@ -13,6 +13,16 @@ import 'new_chat_options_screen.dart';
 import 'notification_service.dart';
 import 'server_list_screen.dart';
 
+int _compareMessageIds(String a, String b) {
+  final aNumber = BigInt.tryParse(a);
+  final bNumber = BigInt.tryParse(b);
+  if (aNumber != null && bNumber != null) {
+    return aNumber.compareTo(bNumber);
+  }
+
+  return a.compareTo(b);
+}
+
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({
     super.key,
@@ -125,7 +135,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       if (aMessage != null && bMessage != null) {
         final timeCompare = bMessage.timestamp.compareTo(aMessage.timestamp);
         if (timeCompare != 0) return timeCompare;
-        return bMessage.id.compareTo(aMessage.id);
+        return _compareMessageIds(bMessage.id, aMessage.id);
       }
       if (aMessage != null) return -1;
       if (bMessage != null) return 1;
@@ -730,13 +740,16 @@ class _ChatTile extends StatelessWidget {
             chat.id,
             fallback: chat.members,
           );
+          final lastMessageId =
+              wsClient.latestKnownMessageIdForRoom(chat.id) ??
+              chat.lastMessageId;
           final leftChat = await Navigator.of(context).push<bool>(
             ChatMessagesScreen.route(
               roomId: chat.id,
               roomName: chat.name,
               invite: chat.invite,
               members: members,
-              lastMessageId: chat.lastMessageId,
+              lastMessageId: lastMessageId,
               color: chat.color,
             ),
           );
@@ -991,7 +1004,7 @@ class Chat {
   final String id;
   final String name;
   final String message;
-  final int? lastMessageId;
+  final String? lastMessageId;
   final String invite;
   final List<String> members;
   final int unreadCount;
@@ -1012,9 +1025,9 @@ class Chat {
     final invite = (json['invite'] as String?) ?? '';
     final lastMessage = (json['last_msg'] as String?) ?? '';
     final lastMessageId =
-        (json['last_msg_id'] as num?)?.toInt() ??
-        (json['last_message_id'] as num?)?.toInt() ??
-        (json['lastMessageId'] as num?)?.toInt();
+        _stringFromJson(json['last_msg_id']) ??
+        _stringFromJson(json['last_message_id']) ??
+        _stringFromJson(json['lastMessageId']);
     final name = (json['name'] as String?)?.trim();
 
     return Chat(

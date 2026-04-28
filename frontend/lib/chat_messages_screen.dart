@@ -23,7 +23,7 @@ class ChatMessagesScreen extends StatefulWidget {
   final String roomName;
   final String invite;
   final List<String> members;
-  final int? lastMessageId;
+  final String? lastMessageId;
   final Color color;
 
   static Route<bool> route({
@@ -31,7 +31,7 @@ class ChatMessagesScreen extends StatefulWidget {
     required String roomName,
     required String invite,
     required List<String> members,
-    required int? lastMessageId,
+    required String? lastMessageId,
     required Color color,
   }) {
     return MaterialPageRoute<bool>(
@@ -87,18 +87,12 @@ class _ChatMessagesScreenState extends State<ChatMessagesScreen> {
   void _requestInitialMessagesIfReady() {
     if (_requestedInitialMessages || !_wsClient.isConnected) return;
     final oldestId = _wsClient.oldestMessageIdForRoom(widget.roomId);
-    final before = oldestId ?? _initialHistoryBeforeId();
+    final before = oldestId ?? widget.lastMessageId ?? '';
     _requestedInitialMessages = _wsClient.requestOlderMessages(
       roomId: widget.roomId,
       count: 30,
       before: before,
     );
-  }
-
-  int? _initialHistoryBeforeId() {
-    final lastMessageId = widget.lastMessageId;
-    if (lastMessageId == null) return null;
-    return lastMessageId + 1;
   }
 
   Future<void> _openChatInfo() async {
@@ -143,7 +137,7 @@ class _ChatMessagesScreenState extends State<ChatMessagesScreen> {
     _wsClient.requestOlderMessages(
       roomId: widget.roomId,
       count: 30,
-      before: oldestId,
+      before: oldestId ?? '',
     );
   }
 

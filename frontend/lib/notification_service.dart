@@ -56,7 +56,7 @@ class NotificationService {
   }
 
   Future<void> showMessage({
-    required int id,
+    required String id,
     required String title,
     required String body,
   }) async {
@@ -83,12 +83,19 @@ class NotificationService {
     );
 
     await _plugin.show(
-      id % 2147483647,
+      _notificationIdFrom(id),
       title,
       body,
       notificationDetails,
       payload: 'message:$id',
     );
+  }
+
+  static int _notificationIdFrom(String id) {
+    final numericId = int.tryParse(id);
+    if (numericId != null) return numericId % 2147483647;
+
+    return id.hashCode & 0x7fffffff;
   }
 
   bool get needsRuntimePermission => Platform.isAndroid || Platform.isIOS;

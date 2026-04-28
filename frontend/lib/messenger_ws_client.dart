@@ -7,6 +7,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'notification_service.dart';
 
+String? _stringFromObject(Object? value) {
+  return switch (value) {
+    String value => value.trim(),
+    num value => value.toString(),
+    _ => null,
+  };
+}
+
+int _compareMessageIds(String a, String? b) {
+  if (b == null) return 1;
+
+  final aNumber = BigInt.tryParse(a);
+  final bNumber = BigInt.tryParse(b);
+  if (aNumber != null && bNumber != null) {
+    return aNumber.compareTo(bNumber);
+  }
+
+  return a.compareTo(b);
+}
+
 class MessengerWsClient extends ChangeNotifier {
   MessengerWsClient._();
 
@@ -19,17 +39,18 @@ class MessengerWsClient extends ChangeNotifier {
   bool _isConnecting = false;
   bool _intentionalDisconnect = false;
   int _reconnectAttempt = 0;
+  int _connectionGeneration = 0;
   Future<void>? _readStateFuture;
   Future<void>? _mutedRoomsFuture;
 
   final Set<String> _trackedRoomIds = {};
   final Set<String> _openRoomIds = {};
   final Map<String, String> _roomNames = {};
-  final Map<String, Map<int, MessengerMessage>> _messagesByRoom = {};
+  final Map<String, Map<String, MessengerMessage>> _messagesByRoom = {};
   final Map<String, List<String>> _membersByRoom = {};
   final Map<String, DateTime> _membersSnapshotAt = {};
-  final Map<String, int> _lastReadMessageIds = {};
-  final Map<String, int> _latestRoomMessageIds = {};
+  final Map<String, String> _lastReadMessageIds = {};
+  final Map<String, String> _latestRoomMessageIds = {};
   final Set<String> _mutedRoomIds = {};
   bool _isChatListVisible = false;
 
@@ -47,11 +68,14 @@ class MessengerWsClient extends ChangeNotifier {
     _alias = alias;
     _server = normalizedServer;
     _intentionalDisconnect = false;
-    await _openSocket();
+    final generation = ++_connectionGeneration;
+    await _openSocket(generation);
   }
 
   Future<void> disconnect() async {
+    _connectionGeneration += 1;
     _intentionalDisconnect = true;
+    _isConnecting = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
@@ -80,8 +104,12 @@ class MessengerWsClient extends ChangeNotifier {
     _openRoomIds.clear();
   }
 
-  Future<void> setRoomLastMessageId(String roomId, int? messageId) async {
-    if (roomId.trim().isEmpty || messageId == null || messageId <= 0) return;
+  Future<void> setRoomLastMessageId(String roomId, String? messageId) async {
+    if (roomId.trim().isEmpty ||
+        messageId == null ||
+        messageId.trim().isEmpty) {
+      return;
+    }
 
     _recordLatestRoomMessageId(roomId, messageId);
     await _ensureReadStateLoaded();
@@ -140,14 +168,14 @@ class MessengerWsClient extends ChangeNotifier {
   }
 
   int unreadCountForRoom(String roomId) {
-    final lastReadId = _lastReadMessageIds[roomId] ?? 0;
+    final lastReadId = _lastReadMessageIds[roomId];
     final roomMessages = _messagesByRoom[roomId];
     if (roomMessages == null || roomMessages.isEmpty) return 0;
 
     return roomMessages.values
         .where(
           (message) =>
-              message.id > lastReadId &&
+              _compareMessageIds(message.id, lastReadId) > 0 &&
               message.sender != _alias &&
               !message.isSystem,
         )
@@ -174,16 +202,24 @@ class MessengerWsClient extends ChangeNotifier {
     notifyListeners();
   }
 
-  int? lastMessageIdForRoom(String roomId) {
+  String? lastMessageIdForRoom(String roomId) {
     final roomMessages = _messagesByRoom[roomId];
     if (roomMessages == null || roomMessages.isEmpty) return null;
-    return roomMessages.keys.reduce((a, b) => a > b ? a : b);
+    return roomMessages.values
+        .reduce((a, b) => MessengerMessage.compare(a, b) >= 0 ? a : b)
+        .id;
   }
 
-  int? oldestMessageIdForRoom(String roomId) {
+  String? latestKnownMessageIdForRoom(String roomId) {
+    return _latestRoomMessageIds[roomId] ?? lastMessageIdForRoom(roomId);
+  }
+
+  String? oldestMessageIdForRoom(String roomId) {
     final roomMessages = _messagesByRoom[roomId];
     if (roomMessages == null || roomMessages.isEmpty) return null;
-    return roomMessages.keys.reduce((a, b) => a < b ? a : b);
+    return roomMessages.values
+        .reduce((a, b) => MessengerMessage.compare(a, b) <= 0 ? a : b)
+        .id;
   }
 
   bool sendTextMessage({required String roomId, required String text}) {
@@ -199,7 +235,7 @@ class MessengerWsClient extends ChangeNotifier {
   bool requestOlderMessages({
     required String roomId,
     int count = 30,
-    int? before,
+    required String before,
   }) {
     final alias = _alias;
     if (alias == null || _socket == null) return false;
@@ -207,14 +243,14 @@ class MessengerWsClient extends ChangeNotifier {
     _send({
       'type': 0,
       'count': count,
-      'before': before ?? 9223372036854775807,
+      'before': before,
       'alias': alias,
       'room_id': roomId,
     });
     return true;
   }
 
-  bool requestMessagesAfter({required String roomId, required int after}) {
+  bool requestMessagesAfter({required String roomId, required String after}) {
     final alias = _alias;
     if (alias == null || _socket == null) return false;
 
@@ -237,7 +273,7 @@ class MessengerWsClient extends ChangeNotifier {
     await markRoomRead(roomId);
   }
 
-  Future<void> markRoomRead(String roomId, {int? upToMessageId}) async {
+  Future<void> markRoomRead(String roomId, {String? upToMessageId}) async {
     if (roomId.trim().isEmpty) return;
 
     await _ensureReadStateLoaded();
@@ -246,18 +282,23 @@ class MessengerWsClient extends ChangeNotifier {
         upToMessageId ??
         lastMessageIdForRoom(roomId) ??
         _latestRoomMessageIds[roomId];
-    if (latestKnownId == null || latestKnownId <= 0) return;
+    if (latestKnownId == null || latestKnownId.trim().isEmpty) return;
 
-    final previousId = _lastReadMessageIds[roomId] ?? 0;
-    if (latestKnownId <= previousId) return;
+    final previousId = _lastReadMessageIds[roomId];
+    if (previousId != null &&
+        _compareMessageIds(latestKnownId, previousId) <= 0) {
+      return;
+    }
 
     _lastReadMessageIds[roomId] = latestKnownId;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_readPreferenceKey(roomId), latestKnownId);
+    await prefs.setString(_readPreferenceKey(roomId), latestKnownId);
     notifyListeners();
   }
 
-  Future<void> _openSocket() async {
+  Future<void> _openSocket(int generation) async {
+    if (generation != _connectionGeneration) return;
+
     final alias = _alias;
     final server = _server;
     if (alias == null || alias.isEmpty || server == null || server.isEmpty) {
@@ -273,25 +314,38 @@ class MessengerWsClient extends ChangeNotifier {
       socket.pingInterval = const Duration(seconds: 20);
       await _ensureMutedRoomsLoaded();
 
+      if (generation != _connectionGeneration) {
+        await socket.close();
+        return;
+      }
+
       _socket = socket;
       _reconnectAttempt = 0;
       notifyListeners();
       unawaited(_syncTrackedRooms());
 
       socket.listen(
-        _handleSocketData,
-        onDone: _handleSocketClosed,
-        onError: (_) => _handleSocketClosed(),
+        (data) => _handleSocketData(data, socket, generation),
+        onDone: () => _handleSocketClosed(socket, generation),
+        onError: (_) => _handleSocketClosed(socket, generation),
         cancelOnError: true,
       );
     } catch (_) {
-      _scheduleReconnect();
+      if (generation == _connectionGeneration) {
+        _scheduleReconnect(generation);
+      }
     } finally {
-      _isConnecting = false;
+      if (generation == _connectionGeneration) {
+        _isConnecting = false;
+      }
     }
   }
 
-  void _handleSocketData(dynamic data) {
+  void _handleSocketData(dynamic data, WebSocket socket, int generation) {
+    if (generation != _connectionGeneration || !identical(_socket, socket)) {
+      return;
+    }
+
     final payload = switch (data) {
       String value => value,
       List<int> value => utf8.decode(value),
@@ -319,7 +373,7 @@ class MessengerWsClient extends ChangeNotifier {
 
       final roomMessages = _messagesByRoom.putIfAbsent(
         message.roomId,
-        () => <int, MessengerMessage>{},
+        () => <String, MessengerMessage>{},
       );
       final previous = roomMessages[message.id];
       roomMessages[message.id] = message;
@@ -345,20 +399,28 @@ class MessengerWsClient extends ChangeNotifier {
     }
   }
 
-  void _handleSocketClosed() {
+  void _handleSocketClosed(WebSocket socket, int generation) {
+    if (generation != _connectionGeneration || !identical(_socket, socket)) {
+      return;
+    }
+
     _socket = null;
     notifyListeners();
-    _scheduleReconnect();
+    _scheduleReconnect(generation);
   }
 
-  void _scheduleReconnect() {
+  void _scheduleReconnect(int generation) {
+    if (generation != _connectionGeneration) return;
     if (_intentionalDisconnect) return;
     if (_alias == null || _server == null) return;
     if (_reconnectTimer?.isActive == true) return;
 
     _reconnectAttempt += 1;
     final delaySeconds = _reconnectAttempt.clamp(1, 8).toInt();
-    _reconnectTimer = Timer(Duration(seconds: delaySeconds), _openSocket);
+    _reconnectTimer = Timer(
+      Duration(seconds: delaySeconds),
+      () => _openSocket(generation),
+    );
   }
 
   Future<void> _syncTrackedRooms() async {
@@ -369,7 +431,8 @@ class MessengerWsClient extends ChangeNotifier {
     for (final roomId in _trackedRoomIds) {
       final lastId = lastMessageIdForRoom(roomId);
       final lastReadId = _lastReadMessageIds[roomId];
-      requestMessagesAfter(roomId: roomId, after: lastId ?? lastReadId ?? 0);
+      final after = lastId ?? lastReadId;
+      requestMessagesAfter(roomId: roomId, after: after ?? '');
     }
   }
 
@@ -397,11 +460,11 @@ class MessengerWsClient extends ChangeNotifier {
     );
   }
 
-  void _recordLatestRoomMessageId(String roomId, int messageId) {
-    if (roomId.trim().isEmpty || messageId <= 0) return;
+  void _recordLatestRoomMessageId(String roomId, String messageId) {
+    if (roomId.trim().isEmpty || messageId.trim().isEmpty) return;
 
-    final previousId = _latestRoomMessageIds[roomId] ?? 0;
-    if (messageId > previousId) {
+    final previousId = _latestRoomMessageIds[roomId];
+    if (previousId == null || _compareMessageIds(messageId, previousId) > 0) {
       _latestRoomMessageIds[roomId] = messageId;
     }
   }
@@ -428,8 +491,10 @@ class MessengerWsClient extends ChangeNotifier {
       if (!key.startsWith(_readPreferencePrefix)) continue;
 
       final roomId = key.substring(_readPreferencePrefix.length);
-      final messageId = prefs.getInt(key);
-      if (roomId.trim().isEmpty || messageId == null || messageId <= 0) {
+      final messageId = _stringFromObject(prefs.get(key));
+      if (roomId.trim().isEmpty ||
+          messageId == null ||
+          messageId.trim().isEmpty) {
         continue;
       }
 
@@ -528,7 +593,7 @@ class MessengerMessage {
     required this.roomId,
   });
 
-  final int id;
+  final String id;
   final int type;
   final String text;
   final String sender;
@@ -547,9 +612,9 @@ class MessengerMessage {
   }
 
   static MessengerMessage? fromJson(Map<String, dynamic> json) {
-    final id = (json['id'] as num?)?.toInt();
+    final id = _stringFromObject(json['id']);
     final type = (json['type'] as num?)?.toInt();
-    final roomId = _stringFromJson(json['room_id']);
+    final roomId = _stringFromObject(json['room_id']);
     final timestampRaw = json['timestamp'] as String?;
 
     if (id == null ||
@@ -570,7 +635,7 @@ class MessengerMessage {
     );
   }
 
-  static String? _stringFromJson(Object? value) {
+  static String? _stringFromObject(Object? value) {
     return switch (value) {
       String value => value.trim(),
       num value => value.toString(),
@@ -581,7 +646,7 @@ class MessengerMessage {
   static int compare(MessengerMessage a, MessengerMessage b) {
     final timeCompare = a.timestamp.compareTo(b.timestamp);
     if (timeCompare != 0) return timeCompare;
-    return a.id.compareTo(b.id);
+    return _compareMessageIds(a.id, b.id);
   }
 
   @override
