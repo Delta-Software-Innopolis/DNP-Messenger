@@ -1,0 +1,13 @@
+package models
+
+import "time"
+
+type Room struct {
+	Id        string    `json:"id"`
+	Name      string    `json:"name"`
+	LastMsg   string    `json:"last_msg"`
+	LastMsgID string    `json:"last_msg_id"`
+	Members   []string  `json:"members"`
+	Invite    string    `json:"invite"`
+	Timestamp time.Time `json:"timestamp"`
+}
