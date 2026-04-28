@@ -5,10 +5,9 @@ Peer-to-peer messanger where multiple servers synchronise messages without centr
 This product was completed as part of a DNP (Distributed and Network Programming) project by students of Innopolis University.
 
 ### Stack
-- Go
+- Go + Gin
 - Docker
 - Flutter
-- Gin
   
 ## Use case diagram
 ```mermaid
