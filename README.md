@@ -1,3 +1,10 @@
+# OLEG MESSENGER
+**The P2P Decentralized Chat Network**
+Peer-to-peer messanger where multiple servers synchronise messages without central coordinator. Each server has its own database, and clients can switch between servers seamlessly.
+
+This product was completed as part of a DNP (Distributed and Network Programming) project by students of Innopolis University.
+  
+  
 ### Use case diagram
 ```mermaid
 flowchart LR
