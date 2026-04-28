@@ -71,7 +71,6 @@ Each server ensures validity and actuality of its data in the database by synchr
 ### How to start
 **Prerequisites**
 - Docker
-- Go
 
 
 **Launch the server:**  
