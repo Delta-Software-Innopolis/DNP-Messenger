@@ -8,6 +8,7 @@ This product was completed as part of a DNP (Distributed and Network Programming
 - Go + Gin
 - Docker
 - Flutter
+- PostgreSQL
   
 ## Use case diagram
 ```mermaid
