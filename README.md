@@ -8,6 +8,8 @@ Peer-to-peer messanger where multiple servers synchronise messages without centr
 
 This product was completed as part of a DNP (Distributed and Network Programming) project by students of Innopolis University.
 
+https://github.com/user-attachments/assets/c63c205c-70cf-4a9e-912c-1c5d0b59d43a
+
 ### Stack
 - Go + Gin
 - Docker
@@ -41,3 +43,11 @@ docker-compose up --build
 - Install `OLEG.apk`
 - Launch the app on android device
 - In settings, specify the link to your server
+
+<center>
+<img width="410" height="410" alt="photo_2026-10-23_14-52-24" src="https://github.com/user-attachments/assets/1062f066-9297-43ca-be3e-74f6fce465af" />
+
+<img width="348" height="225" alt="photo_2026-10-23_14-52-26" src="https://github.com/user-attachments/assets/4c1aebb5-4821-43dd-89a7-c2b57a843183" />
+
+<img width="189" height="253" alt="photo_2026-10-23_14-52-28" src="https://github.com/user-attachments/assets/1952f613-9bf7-44cf-9f3f-46a90648377d" />
+</center>
