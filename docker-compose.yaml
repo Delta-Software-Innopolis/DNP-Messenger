@@ -1,7 +1,9 @@
 networks:
   chatnet:
     driver: bridge
+
 services:
+  # ---- SERVER 1 ----
   backend1:
     build:
       context: ./backend
@@ -13,13 +15,11 @@ services:
       - "8080:8080"
     environment:
       SELF_ADDR: http://backend1:8080
-      # Postgres
       DB_HOST: postgres1 
       DB_PORT: 5432
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}_1
-
     networks:
       - chatnet
     restart: unless-stopped
@@ -33,7 +33,7 @@ services:
     volumes:
       - postgres_data1:/var/lib/postgresql/data
     ports:
-      - "1488:5432"
+      - "5433:5432"
     networks:
       - chatnet
     healthcheck:
@@ -42,7 +42,8 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
- 
+
+  # ---- SERVER 2 ----
   backend2:
     build:
       context: ./backend
@@ -54,7 +55,6 @@ services:
       - "8081:8080"
     environment:
       SELF_ADDR: http://backend2:8080
-      # Postgres
       DB_HOST: postgres2 
       DB_PORT: 5432
       DB_USER: ${DB_USER}
@@ -83,7 +83,8 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
-    
+
+  # ---- SERVER 3 ----
   backend3:
     build:
       context: ./backend
@@ -95,7 +96,6 @@ services:
       - "8082:8080"
     environment:
       SELF_ADDR: http://backend3:8080
-      # Postgres
       DB_HOST: postgres3
       DB_PORT: 5432
       DB_USER: ${DB_USER}
@@ -124,7 +124,7 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
-    
+
 volumes:
   postgres_data1:
   postgres_data2:
