@@ -40,7 +40,7 @@ docker-compose up --build
 ```  
 
 **Launch the client:**
-- Install `OLEG.apk`
+- Install `.apk` from the [releases](https://github.com/Delta-Software-Innopolis/DNP-Messenger/releases/tag/V1.0)
 - Launch the app on android device
 - In settings, specify the link to your server
 
